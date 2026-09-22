@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Almoxarifado · SGO-ETP</title>
+<style>
+:root{
+  /* aço / concreto — não o creme genérico */
+  --floor:#D9D8CE;
+  --panel:#15181B;
+  --panel-2:#1F2328;
+  --steel:#6B6A62;
+  --steel-light:#9A988C;
+  --ink:#1C1A15;
+
+  /* etiqueta de inspeção (papel manilha, não cartão SaaS) */
+  --tag:#ECE4C6;
+  --tag-edge:#C9BE8E;
+  --row:#F1F0E9;
+
+  /* sinalização de equipamento */
+  --red:#C1272D;
+  --red-dark:#8E1A1F;
+  --amber:#E29400;
+  --amber-dark:#8A5A00;
+  --green:#2E6B3A;
+  --green-dark:#1F4A27;
+
+  --led:#3DFB74;
+  --led-dim:#1E7A3B;
+
+  --font-cond: system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --font-mono: ui-monospace,"SF Mono","Menlo","Roboto Mono",monospace;
+  --font-body: system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--floor)}
+body{color:var(--ink);font-family:var(--font-body);
+  padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
+button,input,textarea,select{font:inherit;color:inherit}
+::selection{background:var(--amber);color:#1a1a1a}
+
+.app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--floor)}
+
+/* ---------- painel superior (chapa aparafusada) ---------- */
+.panel{position:relative;background:var(--panel);color:#EDEAE0;padding:22px 20px 20px}
+.panel::before,.panel::after{content:"";position:absolute;top:10px;width:5px;height:5px;border-radius:50%;
+  background:#3A3F44;box-shadow:inset 0 1px 1px rgba(0,0,0,.6)}
+.panel::before{left:10px}.panel::after{right:10px}
+.back{display:inline-flex;align-items:center;gap:6px;color:#C9C4B6;text-decoration:none;font-size:13px;
+  font-family:var(--font-mono);margin-bottom:10px;opacity:.85}
+.back:active{opacity:1}
+.status-line{font-family:var(--font-mono);font-size:12.5px;color:var(--led);letter-spacing:.02em;margin-bottom:6px}
+.h-title{font-family:var(--font-cond);font-weight:800;letter-spacing:-0.02em;font-size:28px;line-height:1.02;margin:0}
+.h-sub{font-family:var(--font-mono);font-size:12.5px;color:var(--steel-light);margin-top:5px}
+
+/* ---------- conteúdo ---------- */
+.content{padding:16px;display:flex;flex-direction:column;gap:12px;flex:1}
+.section-label{font-size:13px;font-weight:700;color:var(--steel);padding:2px 2px}
+
+/* ---------- gauge de conformidade (mostrador circular) ---------- */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0 2px}
+
+/* ---------- painel de disjuntor (linha de categoria) ---------- */
+.breaker{display:flex;align-items:center;gap:12px;background:var(--row);border-bottom:1px solid #DEDCCF;
+  padding:15px 14px;text-decoration:none;color:var(--ink)}
+.breaker:first-child{border-radius:10px 10px 0 0}
+.breaker:last-child{border-radius:0 0 10px 10px;border-bottom:none}
+.breaker:only-child{border-radius:10px}
+.led{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.led.g{background:var(--green);box-shadow:0 0 0 3px rgba(46,107,58,.18)}
+.led.r{background:var(--red);box-shadow:0 0 0 3px rgba(193,39,45,.2)}
+.breaker .name{flex:1;font-weight:600;font-size:15.5px}
+.breaker .count{font-family:var(--font-mono);font-size:13px;color:var(--steel)}
+.panel-group{background:var(--row);border-radius:10px;overflow:hidden}
+
+/* ---------- botões ---------- */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:10px;
+  padding:16px 18px;font-weight:700;font-size:16px;cursor:pointer;text-decoration:none;
+  border-bottom:3px solid rgba(0,0,0,.22);transition:transform .05s, border-bottom-width .05s}
+.btn:active{transform:translateY(2px);border-bottom-width:1px}
+.btn-primary{background:var(--red);color:#fff;border-bottom-color:var(--red-dark)}
+.btn-dark{background:var(--panel);color:#EDEAE0;border-bottom-color:#000}
+.btn-outline{background:var(--row);border:2px solid var(--ink);border-bottom:5px solid var(--ink);color:var(--ink)}
+.btn-outline:active{border-bottom-width:2px}
+.btn-ghost{background:var(--row);border-bottom-color:#D8D6C8;color:var(--ink)}
+.btn-ok{background:#E3F1E4;color:var(--green-dark);border-bottom-color:var(--green)}
+.btn-avaria{background:#FBEFD6;color:var(--amber-dark);border-bottom-color:var(--amber)}
+.btn-falta{background:#F6DAD7;color:var(--red-dark);border-bottom-color:var(--red)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+/* ---------- etiqueta de inspeção (item) ---------- */
+.tag{position:relative;background:var(--tag);border:1px solid var(--tag-edge);border-radius:4px;
+  padding:22px 18px 18px;margin-top:10px}
+.tag::before{content:"";position:absolute;top:-1px;left:50%;transform:translate(-50%,-50%);
+  width:16px;height:16px;border-radius:50%;background:var(--floor);border:1px solid var(--tag-edge)}
+.tag-code{font-family:var(--font-mono);font-size:12.5px;color:#6B6248;letter-spacing:.03em}
+.tag-name{font-family:var(--font-cond);font-weight:800;font-size:23px;letter-spacing:-.01em;margin:3px 0 2px;line-height:1.08}
+.tag-loc{font-size:13px;color:#6B6248}
+
+.stamp{position:absolute;top:14px;right:14px;transform:rotate(-8deg);border:2px solid;border-radius:8px;
+  padding:3px 9px;font-family:var(--font-cond);font-weight:800;font-size:12px;letter-spacing:.03em;
+  background:rgba(255,255,255,.35)}
+.stamp.ok{border-color:var(--green);color:var(--green-dark)}
+.stamp.nc{border-color:var(--red);color:var(--red-dark)}
+.stamp.pend{border-color:var(--steel);color:var(--steel)}
+
+/* ---------- mostrador LED (quantidade) ---------- */
+.led-panel{background:#0E1310;border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;
+  align-items:flex-end;box-shadow:inset 0 0 0 1px #262b26}
+.led-read{font-family:var(--font-mono);font-weight:700;color:var(--led);font-size:38px;line-height:1;
+  text-shadow:0 0 10px rgba(61,251,116,.35)}
+.led-unit{color:var(--led-dim);font-size:17px;margin-left:6px}
+.led-cap{font-family:var(--font-mono);font-size:11px;color:#5c6b60;text-align:right;line-height:1.5}
+.led-cap b{color:#8fae97;font-weight:600}
+
+.card{background:var(--row);border-radius:10px;padding:14px 16px}
+.card h4{font-size:13px;font-weight:700;color:var(--steel);margin:0 0 6px}
+.card p{margin:0;font-size:14px;color:#3d3a33;line-height:1.4}
+
+/* ---------- campos ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+label{font-size:13.5px;font-weight:700;color:var(--steel)}
+input[type=text],input[type=number],textarea,select{border:1.5px solid #C7C4B4;border-radius:8px;
+  padding:11px 12px;background:var(--row);font-size:15.5px}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--ink);outline-offset:1px}
+
+/* ---------- progresso / checklist ---------- */
+.rail{height:6px;border-radius:999px;background:#3a3f44;overflow:hidden}
+.rail > div{height:100%;background:var(--led);transition:width .25s}
+
+.msg{padding:11px 13px;border-radius:8px;font-size:14px;font-family:var(--font-mono)}
+.msg.err{background:#F6DAD7;color:var(--red-dark)}
+.msg.ok{background:#E3F1E4;color:var(--green-dark)}
+
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+  gap:14px;flex:1;padding:40px 24px}
+.footer-note{font-family:var(--font-mono);font-size:11.5px;color:var(--steel);text-align:center;padding:10px 16px}
+
+/* ---------- leitor de crachá ---------- */
+.reader{width:104px;height:104px;border-radius:14px;background:var(--panel-2);border:2px solid #34383d;
+  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.reader svg{position:relative;z-index:2}
+.sweep{position:absolute;left:0;right:0;height:34%;
+  background:linear-gradient(180deg, transparent, rgba(61,251,116,.55), transparent);
+  animation:sweep 1.1s ease-in-out 1}
+@keyframes sweep{from{top:-40%}to{top:100%}}
+@media (prefers-reduced-motion: reduce){.sweep{animation:none;display:none}}
+
+.spinner{width:26px;height:26px;border-radius:50%;border:3px solid #3a3f44;border-top-color:var(--led);
+  animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+
+<script>
+/* ===== CONFIG ===== */
+const SUPABASE_URL = "https://wcyftjpsbifyvuqzxmbs.supabase.co";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjeWZ0anBzYmlmeXZ1cXp4bWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwODUyNzksImV4cCI6MjA5NTY2MTI3OX0.Dcwuq7_Y85PIrbciAj-8-YRbfmMg9QxBkR9esljqMbM";
+const REST = SUPABASE_URL + "/rest/v1";
+
+function apiHeaders(extra){
+  return Object.assign({
+    "apikey": ANON_KEY,
+    "Authorization": "Bearer " + ANON_KEY,
+    "Content-Type": "application/json"
+  }, extra||{});
+}
+async function api(path, opts){
+  opts = opts || {};
+  const res = await fetch(REST + path, {
+    method: opts.method || "GET",
+    headers: apiHeaders(opts.headers),
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  if(!res.ok){
+    const t = await res.text().catch(()=> "");
+    throw new Error("Erro na API (" + res.status + "): " + t.slice(0,200));
+  }
+  if(res.status === 204) return null;
+  const ct = res.headers.get("content-type") || "";
+  if(ct.indexOf("json") === -1) return null;
+  return res.json();
+}
+
+/* ===== ÍCONES (SVG inline, sem CDN) ===== */
+const ICO = {
+  badge: `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#EDEAE0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"></rect><circle cx="12" cy="10" r="2.2"></circle><path d="M8 16c.7-1.6 2.1-2.4 4-2.4s3.3.8 4 2.4"></path></svg>`
+};
+
+/* ===== STATE ===== */
+const state = {
+  brigadista: null,
+  categorias: [],
+  itens: [],
+  categoriaAtual: null,
+  itemAtual: null,
+  checklist: null,
+};
+
+const app = document.getElementById("app");
+function el(html){ const d = document.createElement("div"); d.innerHTML = html.trim(); return d.firstChild; }
+function render(node){ app.innerHTML=""; app.appendChild(node); window.scrollTo(0,0); }
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ===== GAUGE (mostrador de conformidade) ===== */
+function gaugeSvg(pct, size){
+  size = size || 132;
+  const r = size/2 - 10, c = size/2;
+  const circ = 2*Math.PI*r;
+  const arcLen = circ * 0.75;
+  const rot = 135;
+  const filled = arcLen * (pct/100);
+  const color = pct >= 90 ? "#2E6B3A" : pct >= 70 ? "#E29400" : "#C1272D";
+  return `
+  <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="#3a3f44" stroke-width="9"
+      stroke-linecap="round" stroke-dasharray="${arcLen} ${circ}" transform="rotate(${rot} ${c} ${c})"/>
+    <circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="9"
+      stroke-linecap="round" stroke-dasharray="${filled} ${circ}" transform="rotate(${rot} ${c} ${c})"/>
+    <text x="${c}" y="${c-2}" text-anchor="middle" font-family="ui-monospace,monospace" font-weight="700"
+      font-size="26" fill="#EDEAE0">${pct}%</text>
+    <text x="${c}" y="${c+18}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="10.5"
+      fill="#9A988C">CONFORME</text>
+  </svg>`;
+}
+
+/* ===== DADOS ===== */
+async function carregarDados(){
+  const [categorias, itens] = await Promise.all([
+    api("/almox_categorias?select=id,nome,ordem&order=ordem"),
+    api("/almox_itens?select=id,codigo_interno,nome,categoria_id,almoxarifado,unidade_estoque,quantidade_cadastrada,quantidade_disponivel,criterio_tecnico,evidencia_pertinente,status_conformidade&order=nome")
+  ]);
+  state.categorias = categorias;
+  state.itens = itens;
+}
+function itensDaCategoria(id){ return state.itens.filter(i => i.categoria_id === id); }
+function pctConforme(){
+  if(state.itens.length === 0) return 100;
+  const nc = state.itens.filter(i => i.status_conformidade === "NAO_CONFORME").length;
+  return Math.round(((state.itens.length - nc) / state.itens.length) * 100);
+}
+function categoriaTemNC(id){ return itensDaCategoria(id).some(i => i.status_conformidade === "NAO_CONFORME"); }
+
+/* ===== SCREENS ===== */
+
+function screenLoading(msg){
+  render(el(`<div class="app"><div class="center"><div class="spinner"></div><div style="font-family:ui-monospace,monospace;font-size:13px;color:#6B6A62">${esc(msg||"lendo dados...")}</div></div></div>`));
+}
+function screenErro(msg, retry){
+  const node = el(`<div class="app"><div class="center"><div class="msg err">${esc(msg)}</div><button class="btn btn-outline" id="r">Tentar de novo</button></div></div>`);
+  node.querySelector("#r").onclick = retry;
+  render(node);
+}
+
+async function screenCracha(){
+  const params = new URLSearchParams(location.search);
+  const uid = params.get("u");
+
+  if(!uid){
+    render(el(`
+      <div class="app">
+        <div class="panel"><div class="h-title">Almoxarifado</div><div class="h-sub">SGO-ETP · TERMINAL PARAUAPEBAS</div></div>
+        <div class="center">
+          <div class="reader">${ICO.badge}</div>
+          <div style="font-family:var(--font-cond);font-weight:800;font-size:20px">Aproxime o crachá</div>
+          <div class="footer-note">encoste a tag NFC no iPhone para identificar o acesso</div>
+        </div>
+      </div>`));
+    return;
+  }
+
+  render(el(`
+    <div class="app">
+      <div class="panel"><div class="h-title">Almoxarifado</div><div class="h-sub">SGO-ETP · TERMINAL PARAUAPEBAS</div></div>
+      <div class="center">
+        <div class="reader">${ICO.badge}<div class="sweep"></div></div>
+        <div style="font-family:ui-monospace,monospace;font-size:13px;color:#6B6A62">verificando crachá...</div>
+      </div>
+    </div>`));
+
+  const minWait = new Promise(r => setTimeout(r, 550));
+  try{
+    const [rows] = await Promise.all([
+      api(`/efetivo?id=eq.${encodeURIComponent(uid)}&status=eq.ativo&select=id,nome,funcao,turno&limit=1`),
+      minWait
+    ]);
+    if(!rows || rows.length === 0){
+      screenErro("crachá não reconhecido ou bloqueado.", () => screenCracha());
+      return;
+    }
+    state.brigadista = rows[0];
+    await carregarDados();
+    screenCategorias();
+  }catch(e){
+    screenErro(e.message, () => screenCracha());
+  }
+}
+
+function screenCategorias(){
+  const b = state.brigadista;
+  const pct = pctConforme();
+
+  let rows = "";
+  state.categorias.forEach(c => {
+    const n = itensDaCategoria(c.id).length;
+    const nc = categoriaTemNC(c.id);
+    rows += `
+      <a class="breaker" href="#" data-cat="${c.id}">
+        <div class="led ${nc?'r':'g'}"></div>
+        <div class="name">${esc(c.nome)}</div>
+        <div class="count">${n}</div>
+      </a>`;
+  });
+
+  const node = el(`
+    <div class="app">
+      <div class="panel">
+        <div class="status-line">crachá ok · ${esc(b.nome)}</div>
+        <div class="h-title">Almoxarifado</div>
+        <div class="h-sub">${esc(b.funcao || "brigadista")} · TURNO ${esc(b.turno || "—")}</div>
+        <div class="gauge-wrap">${gaugeSvg(pct)}</div>
+      </div>
+      <div class="content">
+        <div class="section-label">selecione a atividade</div>
+        <div class="panel-group">${rows}</div>
+      </div>
+      <div class="footer-note">almox I e II · ${state.itens.length} itens cadastrados</div>
+    </div>`);
+
+  node.querySelectorAll("[data-cat]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); screenItens(a.getAttribute("data-cat")); });
+  render(node);
+}
+
+function screenItens(categoriaId){
+  state.categoriaAtual = categoriaId;
+  const cat = state.categorias.find(c => c.id === categoriaId);
+  const itens = itensDaCategoria(categoriaId);
+
+  let rows = "";
+  itens.forEach(i => {
+    const nc = i.status_conformidade === "NAO_CONFORME";
+    rows += `
+      <a class="breaker" href="#" data-item="${i.id}">
+        <div class="led ${nc?'r':'g'}"></div>
+        <div class="name">${esc(i.nome)}<div style="font-family:ui-monospace,monospace;font-size:11.5px;color:#6B6A62;font-weight:400">${esc(i.codigo_interno)} · ${esc(i.almoxarifado)}</div></div>
+        <div class="count">${i.quantidade_disponivel} ${esc(i.unidade_estoque)}</div>
+      </a>`;
+  });
+
+  const node = el(`
+    <div class="app">
+      <div class="panel">
+        <a class="back" href="#" id="v">← voltar</a>
+        <div class="h-title">${esc(cat.nome)}</div>
+        <div class="h-sub">${esc(state.brigadista.nome)}</div>
+      </div>
+      <div class="content">
+        <button class="btn btn-dark" id="ck" style="justify-content:space-between;text-align:left">
+          <span>checklist completo · ${itens.length} itens</span><span>→</span>
+        </button>
+        <div class="section-label">ou selecione um item</div>
+        <div class="panel-group">${rows}</div>
+      </div>
+    </div>`);
+
+  node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); screenCategorias(); };
+  node.querySelector("#ck").onclick = () => iniciarChecklist(categoriaId);
+  node.querySelectorAll("[data-item]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); screenItem(a.getAttribute("data-item")); });
+  render(node);
+}
+
+function statusStamp(status){
+  if(status === "NAO_CONFORME") return `<div class="stamp nc">restrito</div>`;
+  if(status === "CONFORME") return `<div class="stamp ok">conforme</div>`;
+  return `<div class="stamp pend">pendente</div>`;
+}
+
+function screenItem(itemId){
+  const item = state.itens.find(i => i.id === itemId);
+  state.itemAtual = item;
+
+  const node = el(`
+    <div class="app">
+      <div class="panel">
+        <a class="back" href="#" id="v">← voltar</a>
+        <div class="h-title">${esc(item.nome)}</div>
+        <div class="h-sub">${esc(item.codigo_interno)} · ${esc(item.almoxarifado)}</div>
+      </div>
+      <div class="content">
+        <div class="tag">
+          ${statusStamp(item.status_conformidade)}
+          <div class="tag-code">${esc(item.codigo_interno)}</div>
+          <div class="tag-name">${esc(item.nome)}</div>
+          <div class="tag-loc">${esc(item.almoxarifado)}</div>
+          <div class="led-panel" style="margin-top:14px">
+            <div><span class="led-read">${item.quantidade_disponivel}</span><span class="led-unit">${esc(item.unidade_estoque)}</span></div>
+            <div class="led-cap">disponível de<br><b>${item.quantidade_cadastrada} ${esc(item.unidade_estoque)}</b></div>
+          </div>
+        </div>
+        <div class="grid2">
+          <button class="btn btn-primary" id="ret">Retirar</button>
+          <button class="btn btn-outline" id="dev">Devolver</button>
+        </div>
+        <div class="card"><h4>critério técnico</h4><p>${esc(item.criterio_tecnico||"—")}</p></div>
+        <div class="card"><h4>evidência exigida</h4><p>${esc(item.evidencia_pertinente||"—")}</p></div>
+        <button class="btn btn-ghost" id="nc">Abrir não conformidade</button>
+        <div id="msgArea"></div>
+      </div>
+    </div>`);
+
+  node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); screenItens(item.categoria_id); };
+  node.querySelector("#ret").onclick = () => modalQuantidade(item, "RETIRADA");
+  node.querySelector("#dev").onclick = () => modalQuantidade(item, "DEVOLUCAO");
+  node.querySelector("#nc").onclick = () => modalNC(item, null);
+  render(node);
+}
+
+function modalQuantidade(item, tipo){
+  const max = tipo === "RETIRADA" ? item.quantidade_disponivel : (item.quantidade_cadastrada - item.quantidade_disponivel);
+  const titulo = tipo === "RETIRADA" ? "Confirmar retirada" : "Confirmar devolução";
+  const node = el(`
+    <div class="app">
+      <div class="panel"><a class="back" href="#" id="v">← voltar</a><div class="h-title">${titulo}</div><div class="h-sub">${esc(item.nome)}</div></div>
+      <div class="content">
+        <div class="status-line" style="color:#6B6A62">brigadista: ${esc(state.brigadista.nome)}</div>
+        <div class="field"><label>quantidade (máx. ${max})</label><input type="number" id="qtd" min="1" max="${max}" value="1"></div>
+        <div id="msgArea"></div>
+        <button class="btn btn-primary" id="ok">Confirmar</button>
+      </div>
+    </div>`);
+  node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); screenItem(item.id); };
+  node.querySelector("#ok").onclick = async () => {
+    const qtd = parseInt(node.querySelector("#qtd").value, 10);
+    const msgArea = node.querySelector("#msgArea");
+    if(!qtd || qtd < 1 || qtd > max){ msgArea.innerHTML = `<div class="msg err">quantidade inválida</div>`; return; }
+    try{
+      await registrarMovimento(item, tipo, qtd);
+      msgArea.innerHTML = `<div class="msg ok">registrado com sucesso</div>`;
+      await carregarDados();
+      const atualizado = state.itens.find(i => i.id === item.id);
+      setTimeout(() => screenItem(atualizado.id), 550);
+    }catch(e){ msgArea.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  };
+  render(node);
+}
+
+async function registrarMovimento(item, tipo, qtd){
+  const novoDisponivel = tipo === "RETIRADA" ? item.quantidade_disponivel - qtd
+    : Math.min(item.quantidade_cadastrada, item.quantidade_disponivel + qtd);
+  await api(`/almox_itens?id=eq.${item.id}`, { method:"PATCH", headers:{"Prefer":"return=minimal"}, body:{ quantidade_disponivel: novoDisponivel } });
+  await api(`/almox_registros`, { method:"POST", headers:{"Prefer":"return=minimal"},
+    body:{ item_id:item.id, tipo:tipo, quantidade:qtd, brigadista_id: state.brigadista.id } });
+}
+
+function modalNC(item, checklistCtx){
+  const node = el(`
+    <div class="app">
+      <div class="panel"><a class="back" href="#" id="v">← voltar</a><div class="h-title">Não conformidade</div><div class="h-sub">${esc(item.nome)}</div></div>
+      <div class="content">
+        <div class="field"><label>prioridade</label>
+          <select id="prioridade"><option value="ALTA">Alta</option><option value="MEDIA" selected>Média</option><option value="BAIXA">Baixa</option></select>
+        </div>
+        <div class="field"><label>o que aconteceu</label><textarea id="constatacao" rows="4" placeholder="ex.: mangueira com corte visível"></textarea></div>
+        <div class="field"><label>ação imediata / contenção</label><textarea id="correcao" rows="3" placeholder="ex.: item retirado de uso e sinalizado"></textarea></div>
+        <div id="msgArea"></div>
+        <button class="btn btn-primary" id="salvar">Registrar NC</button>
+      </div>
+    </div>`);
+  node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); checklistCtx ? renderChecklistStep() : screenItem(item.id); };
+  node.querySelector("#salvar").onclick = async () => {
+    const constatacao = node.querySelector("#constatacao").value.trim();
+    const msgArea = node.querySelector("#msgArea");
+    if(!constatacao){ msgArea.innerHTML = `<div class="msg err">descreva o que aconteceu</div>`; return; }
+    try{
+      await api(`/almox_acoes_nc`, { method:"POST", headers:{"Prefer":"return=minimal"}, body:{
+        origem: checklistCtx ? "CHECKLIST" : "MANUAL", item_id:item.id, requisito_referencia:item.criterio_tecnico,
+        constatacao, correcao_contencao: node.querySelector("#correcao").value.trim() || null,
+        prioridade: node.querySelector("#prioridade").value, responsavel_id: state.brigadista.id, status:"ABERTA"
+      }});
+      await api(`/almox_itens?id=eq.${item.id}`, { method:"PATCH", headers:{"Prefer":"return=minimal"}, body:{ status_conformidade:"NAO_CONFORME" } });
+      msgArea.innerHTML = `<div class="msg ok">NC registrada</div>`;
+      setTimeout(() => checklistCtx ? avancarChecklist() : screenItem(item.id), 500);
+    }catch(e){ msgArea.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  };
+  render(node);
+}
+
+/* ===== CHECKLIST ===== */
+async function iniciarChecklist(categoriaId){
+  screenLoading("preparando checklist...");
+  try{
+    const created = await api(`/almox_checklists`, { method:"POST", headers:{"Prefer":"return=representation"},
+      body:{ categoria_id:categoriaId, brigadista_id: state.brigadista.id, status:"EM_ANDAMENTO" } });
+    state.checklist = { id: created[0].id, categoriaId, itens: itensDaCategoria(categoriaId), idx: 0 };
+    renderChecklistStep();
+  }catch(e){ screenErro(e.message, () => screenItens(categoriaId)); }
+}
+
+function renderChecklistStep(){
+  const ck = state.checklist, total = ck.itens.length;
+  if(ck.idx >= total){ finalizarChecklist(); return; }
+  const item = ck.itens[ck.idx];
+  const pct = Math.round((ck.idx/total)*100);
+
+  const node = el(`
+    <div class="app">
+      <div class="panel">
+        <a class="back" href="#" id="sair">← sair (mantém progresso)</a>
+        <div class="h-title">Checklist</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+          <div class="rail" style="flex:1"><div style="width:${pct}%"></div></div>
+          <div class="status-line" style="margin:0">${ck.idx}/${total}</div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="tag">
+          <div class="tag-code">${esc(item.codigo_interno)}</div>
+          <div class="tag-name">${esc(item.nome)}</div>
+          <div class="tag-loc">disponível: ${item.quantidade_disponivel} ${esc(item.unidade_estoque)}</div>
+        </div>
+        <div class="card"><p>${esc(item.criterio_tecnico||"—")}</p></div>
+        <div class="grid3">
+          <button class="btn btn-ok" id="ok">OK</button>
+          <button class="btn btn-avaria" id="av">Avaria</button>
+          <button class="btn btn-falta" id="fa">Falta</button>
+        </div>
+      </div>
+    </div>`);
+  node.querySelector("#sair").onclick = (ev) => { ev.preventDefault(); screenItens(ck.categoriaId); };
+  node.querySelector("#ok").onclick = () => registrarChecklistItem(item, "OK");
+  node.querySelector("#av").onclick = () => registrarChecklistItem(item, "AVARIA");
+  node.querySelector("#fa").onclick = () => registrarChecklistItem(item, "FALTA");
+  render(node);
+}
+
+async function registrarChecklistItem(item, resultado){
+  try{
+    await api(`/almox_registros`, { method:"POST", headers:{"Prefer":"return=minimal"},
+      body:{ item_id:item.id, checklist_id: state.checklist.id, tipo:"INSPECAO", resultado, brigadista_id: state.brigadista.id } });
+    resultado === "OK" ? avancarChecklist() : modalNC(item, true);
+  }catch(e){ alert("erro ao registrar: " + e.message); }
+}
+function avancarChecklist(){ state.checklist.idx += 1; renderChecklistStep(); }
+
+function finalizarChecklist(){
+  const ck = state.checklist;
+  const node = el(`
+    <div class="app">
+      <div class="panel"><div class="h-title">Finalizar checklist</div><div class="h-sub">${esc(state.brigadista.nome)}</div></div>
+      <div class="content">
+        <div class="msg ok">${ck.itens.length} itens verificados</div>
+        <div class="field"><label>observações gerais (opcional)</label><textarea id="obs" rows="3"></textarea></div>
+        <div id="msgArea"></div>
+        <button class="btn btn-primary" id="fin">Assinar e finalizar</button>
+      </div>
+    </div>`);
+  node.querySelector("#fin").onclick = async () => {
+    const msgArea = node.querySelector("#msgArea");
+    try{
+      await api(`/almox_checklists?id=eq.${ck.id}`, { method:"PATCH", headers:{"Prefer":"return=minimal"}, body:{
+        status:"FINALIZADO", finalizado_em: new Date().toISOString(), observacoes_gerais: node.querySelector("#obs").value.trim() || null
+      }});
+      msgArea.innerHTML = `<div class="msg ok">checklist assinado</div>`;
+      await carregarDados();
+      setTimeout(() => { state.checklist = null; screenCategorias(); }, 650);
+    }catch(e){ msgArea.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  };
+  render(node);
+}
+
+screenCracha();
+</script>
+</body>
+</html>
