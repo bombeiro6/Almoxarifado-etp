@@ -324,6 +324,9 @@ function screenCategorias(){
         <div class="h-title">Almoxarifado</div>
         <div class="h-sub">${esc(b.funcao || "brigadista")} · TURNO ${esc(b.turno || "—")}</div>
         <div class="gauge-wrap">${gaugeSvg(pct)}</div>
+        <div style="text-align:center;margin-top:2px">
+          <a href="#" id="verIndicadores" style="font-family:ui-monospace,monospace;font-size:12px;color:#9A988C;text-decoration:underline">ver indicadores ISO completos →</a>
+        </div>
       </div>
       <div class="content">
         <div class="section-label">selecione a atividade</div>
@@ -333,7 +336,93 @@ function screenCategorias(){
     </div>`);
 
   node.querySelectorAll("[data-cat]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); screenItens(a.getAttribute("data-cat")); });
+  node.querySelector("#verIndicadores").onclick = (ev) => { ev.preventDefault(); screenIndicadores(); };
   render(node);
+}
+
+/* ===== INDICADORES ISO ===== */
+async function screenIndicadores(){
+  screenLoading("carregando indicadores...");
+  try{
+    const [ncsAbertas, ambiental] = await Promise.all([
+      api("/almox_acoes_nc?status=in.(ABERTA,EM_TRATAMENTO)&select=id,item_id,constatacao,prioridade,status,created_at,almox_itens(nome,codigo_interno)&order=created_at.desc"),
+      api("/almox_controle_ambiental?select=resultado_documentado")
+    ]);
+    renderIndicadores(ncsAbertas, ambiental);
+  }catch(e){
+    screenErro(e.message, () => screenIndicadores());
+  }
+}
+
+function renderIndicadores(ncs, ambiental){
+  const total = state.itens.length;
+  const nc = state.itens.filter(i => i.status_conformidade === "NAO_CONFORME").length;
+  const pct = pctConforme();
+  const altas = ncs.filter(n => n.prioridade === "ALTA").length;
+  const ambTotal = ambiental.length;
+  const ambDoc = ambiental.filter(a => a.resultado_documentado && a.resultado_documentado !== "PENDENTE").length;
+
+  let ncRows = "";
+  if(ncs.length === 0){
+    ncRows = `<div class="card"><p>nenhuma NC aberta no momento</p></div>`;
+  }else{
+    ncs.forEach(n => {
+      const item = n.almox_itens || {};
+      ncRows += `
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;gap:8px">
+            <div style="font-weight:700;font-size:14.5px">${esc(item.nome||"item removido")}</div>
+            <span style="font-family:ui-monospace,monospace;font-size:11px;color:${n.prioridade==='ALTA'?'#C1272D':n.prioridade==='MEDIA'?'#8A5A00':'#6B6A62'}">${esc(n.prioridade||'')}</span>
+          </div>
+          <p style="margin-top:4px">${esc(n.constatacao)}</p>
+          <div style="font-family:ui-monospace,monospace;font-size:11px;color:#9A988C;margin-top:4px">${esc(item.codigo_interno||'')} · ${new Date(n.created_at).toLocaleDateString('pt-BR')}</div>
+        </div>`;
+    });
+  }
+
+  const node = el(`
+    <div class="app">
+      <div class="panel">
+        <a class="back" href="#" id="v">← voltar</a>
+        <div class="h-title">Indicadores ISO</div>
+        <div class="h-sub">9001 · QUALIDADE &nbsp;+&nbsp; 14001 · AMBIENTAL</div>
+        <div class="gauge-wrap">${gaugeSvg(pct)}</div>
+      </div>
+      <div class="content">
+        <div class="grid2">
+          <div class="card"><h4>itens cadastrados</h4><p style="font-family:ui-monospace,monospace;font-size:22px;font-weight:700">${total}</p></div>
+          <div class="card"><h4>não conformes</h4><p style="font-family:ui-monospace,monospace;font-size:22px;font-weight:700;color:#C1272D">${nc}</p></div>
+          <div class="card"><h4>ncs em aberto</h4><p style="font-family:ui-monospace,monospace;font-size:22px;font-weight:700">${ncs.length}</p></div>
+          <div class="card"><h4>prioridade alta</h4><p style="font-family:ui-monospace,monospace;font-size:22px;font-weight:700;color:#C1272D">${altas}</p></div>
+        </div>
+        <div class="card">
+          <h4>controle ambiental · 14001</h4>
+          <p>${ambDoc} de ${ambTotal} controles documentados</p>
+        </div>
+        <div class="section-label">não conformidades em aberto</div>
+        ${ncRows}
+        <button class="btn btn-dark" id="exportar">Exportar CSV para auditoria</button>
+      </div>
+    </div>`);
+
+  node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); screenCategorias(); };
+  node.querySelector("#exportar").onclick = () => exportarCsv(ncs);
+  render(node);
+}
+
+function exportarCsv(ncs){
+  const linhas = [["item","codigo","prioridade","status","constatacao","data"]];
+  ncs.forEach(n => {
+    const item = n.almox_itens || {};
+    linhas.push([item.nome||"", item.codigo_interno||"", n.prioridade||"", n.status||"", (n.constatacao||"").replace(/\n/g," "), new Date(n.created_at).toLocaleString('pt-BR')]);
+  });
+  const csv = linhas.map(l => l.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "almoxarifado_nc_" + new Date().toISOString().slice(0,10) + ".csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function screenItens(categoriaId){
