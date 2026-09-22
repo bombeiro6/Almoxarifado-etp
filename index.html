@@ -233,7 +233,7 @@ function gaugeSvg(pct, size){
 async function carregarDados(){
   const [categorias, itens] = await Promise.all([
     api("/almox_categorias?select=id,nome,ordem&order=ordem"),
-    api("/almox_itens?select=id,codigo_interno,nome,categoria_id,almoxarifado,unidade_estoque,quantidade_cadastrada,quantidade_disponivel,criterio_tecnico,evidencia_pertinente,status_conformidade&order=nome")
+    api("/almox_itens?select=id,codigo_interno,nome,categoria_id,almoxarifado,unidade_estoque,quantidade_cadastrada,quantidade_disponivel,criterio_tecnico,evidencia_pertinente,status_conformidade,referencia_normativa,almox_grupos_armazenagem(nome,como_guardar)&order=nome")
   ]);
   state.categorias = categorias;
   state.itens = itens;
