@@ -200,6 +200,7 @@ const state = {
   categoriaAtual: null,
   itemAtual: null,
   checklist: null,
+  almox: null,
 };
 
 const app = document.getElementById("app");
@@ -233,16 +234,19 @@ function gaugeSvg(pct, size){
 async function carregarDados(){
   const [categorias, itens] = await Promise.all([
     api("/almox_categorias?select=id,nome,ordem&order=ordem"),
-    api("/almox_itens?select=id,codigo_interno,nome,categoria_id,almoxarifado,unidade_estoque,quantidade_cadastrada,quantidade_disponivel,criterio_tecnico,evidencia_pertinente,status_conformidade,referencia_normativa,almox_grupos_armazenagem(nome,como_guardar)&order=nome")
+    api("/almox_itens?ativo=eq.true&select=id,codigo_interno,nome,categoria_id,almoxarifado,unidade_estoque,quantidade_cadastrada,quantidade_disponivel,criterio_tecnico,evidencia_pertinente,status_conformidade,referencia_normativa,almox_grupos_armazenagem(nome,como_guardar,validado_por_gestao)&order=nome")
   ]);
   state.categorias = categorias;
   state.itens = itens;
 }
-function itensDaCategoria(id){ return state.itens.filter(i => i.categoria_id === id); }
-function pctConforme(){
-  if(state.itens.length === 0) return 100;
-  const nc = state.itens.filter(i => i.status_conformidade === "NAO_CONFORME").length;
-  return Math.round(((state.itens.length - nc) / state.itens.length) * 100);
+function itensAlmox(almox){ const a = almox || state.almox; return a ? state.itens.filter(i => i.almoxarifado === a) : state.itens; }
+function nomeAlmox(a){ return a === "Almox II" ? "Almoxarifado II" : "Almoxarifado I"; }
+function itensDaCategoria(id){ return itensAlmox().filter(i => i.categoria_id === id); }
+function pctConforme(almox){
+  const lista = itensAlmox(almox);
+  if(lista.length === 0) return 100;
+  const nc = lista.filter(i => i.status_conformidade === "NAO_CONFORME").length;
+  return Math.round(((lista.length - nc) / lista.length) * 100);
 }
 function categoriaTemNC(id){ return itensDaCategoria(id).some(i => i.status_conformidade === "NAO_CONFORME"); }
 
@@ -295,10 +299,45 @@ async function screenCracha(){
     }
     state.brigadista = rows[0];
     await carregarDados();
-    screenCategorias();
+    screenAlmox();
   }catch(e){
     screenErro(e.message, () => screenCracha());
   }
+}
+
+function screenAlmox(){
+  const b = state.brigadista;
+  let cards = "";
+  ["Almox I","Almox II"].forEach(a => {
+    const lista = itensAlmox(a);
+    const unidades = lista.reduce((s,i) => s + Number(i.quantidade_disponivel||0), 0);
+    const temNC = lista.some(i => i.status_conformidade === "NAO_CONFORME");
+    const pct = pctConforme(a);
+    cards += `
+      <a class="breaker" href="#" data-almox="${a}" style="padding:20px 16px">
+        <div class="led ${temNC?'r':'g'}"></div>
+        <div class="name" style="font-size:18px">${nomeAlmox(a)}
+          <div style="font-family:ui-monospace,monospace;font-size:12px;color:#6B6A62;font-weight:400">${lista.length} itens · ${unidades} unidades · ${pct}% conforme</div>
+        </div>
+        <div class="count">→</div>
+      </a>`;
+  });
+  const node = el(`
+    <div class="app">
+      <div class="panel">
+        <div class="status-line">crachá ok · ${esc(b.nome)}</div>
+        <div class="h-title">Qual almoxarifado?</div>
+        <div class="h-sub">${esc(b.funcao || "brigadista")} · TURNO ${esc(b.turno || "—")}</div>
+      </div>
+      <div class="content">
+        <div class="section-label">selecione onde você está</div>
+        <div class="panel-group">${cards}</div>
+      </div>
+    </div>`);
+  node.querySelectorAll("[data-almox]").forEach(a => a.onclick = (ev) => {
+    ev.preventDefault(); state.almox = a.getAttribute("data-almox"); screenCategorias();
+  });
+  render(node);
 }
 
 function screenCategorias(){
@@ -308,6 +347,7 @@ function screenCategorias(){
   let rows = "";
   state.categorias.forEach(c => {
     const n = itensDaCategoria(c.id).length;
+    if(n === 0) return;
     const nc = categoriaTemNC(c.id);
     rows += `
       <a class="breaker" href="#" data-cat="${c.id}">
@@ -320,8 +360,9 @@ function screenCategorias(){
   const node = el(`
     <div class="app">
       <div class="panel">
+        <a class="back" href="#" id="trocar">← trocar almoxarifado</a>
         <div class="status-line">crachá ok · ${esc(b.nome)}</div>
-        <div class="h-title">Almoxarifado</div>
+        <div class="h-title">${nomeAlmox(state.almox)}</div>
         <div class="h-sub">${esc(b.funcao || "brigadista")} · TURNO ${esc(b.turno || "—")}</div>
         <div class="gauge-wrap">${gaugeSvg(pct)}</div>
         <div style="text-align:center;margin-top:2px">
@@ -332,11 +373,12 @@ function screenCategorias(){
         <div class="section-label">selecione a atividade</div>
         <div class="panel-group">${rows}</div>
       </div>
-      <div class="footer-note">almox I e II · ${state.itens.length} itens cadastrados</div>
+      <div class="footer-note">${nomeAlmox(state.almox).toLowerCase()} · ${itensAlmox().length} itens cadastrados</div>
     </div>`);
 
   node.querySelectorAll("[data-cat]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); screenItens(a.getAttribute("data-cat")); });
   node.querySelector("#verIndicadores").onclick = (ev) => { ev.preventDefault(); screenIndicadores(); };
+  node.querySelector("#trocar").onclick = (ev) => { ev.preventDefault(); screenAlmox(); };
   render(node);
 }
 
@@ -345,8 +387,8 @@ async function screenIndicadores(){
   screenLoading("carregando indicadores...");
   try{
     const [ncsAbertas, ambiental] = await Promise.all([
-      api("/almox_acoes_nc?status=in.(ABERTA,EM_TRATAMENTO)&select=id,item_id,constatacao,prioridade,status,created_at,almox_itens(nome,codigo_interno)&order=created_at.desc"),
-      api("/almox_controle_ambiental?select=resultado_documentado")
+      api("/almox_acoes_nc?status=in.(ABERTA,EM_TRATAMENTO)&select=id,item_id,constatacao,prioridade,status,created_at,almox_itens(nome,codigo_interno,almoxarifado)&order=created_at.desc"),
+      api("/almox_controle_ambiental?select=resultado_documentado,almoxarifado")
     ]);
     renderIndicadores(ncsAbertas, ambiental);
   }catch(e){
@@ -354,9 +396,11 @@ async function screenIndicadores(){
   }
 }
 
-function renderIndicadores(ncs, ambiental){
-  const total = state.itens.length;
-  const nc = state.itens.filter(i => i.status_conformidade === "NAO_CONFORME").length;
+function renderIndicadores(ncsTodas, ambientalTodos){
+  const ncs = ncsTodas.filter(n => n.almox_itens && n.almox_itens.almoxarifado === state.almox);
+  const ambiental = ambientalTodos.filter(a => a.almoxarifado === state.almox);
+  const total = itensAlmox().length;
+  const nc = itensAlmox().filter(i => i.status_conformidade === "NAO_CONFORME").length;
   const pct = pctConforme();
   const altas = ncs.filter(n => n.prioridade === "ALTA").length;
   const ambTotal = ambiental.length;
@@ -385,7 +429,7 @@ function renderIndicadores(ncs, ambiental){
       <div class="panel">
         <a class="back" href="#" id="v">← voltar</a>
         <div class="h-title">Indicadores ISO</div>
-        <div class="h-sub">9001 · QUALIDADE &nbsp;+&nbsp; 14001 · AMBIENTAL</div>
+        <div class="h-sub">${nomeAlmox(state.almox).toUpperCase()} · 9001 + 14001</div>
         <div class="gauge-wrap">${gaugeSvg(pct)}</div>
       </div>
       <div class="content">
@@ -420,7 +464,7 @@ function exportarCsv(ncs){
   const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "almoxarifado_nc_" + new Date().toISOString().slice(0,10) + ".csv";
+  a.href = url; a.download = "nc_" + (state.almox||"").replace(" ","_").toLowerCase() + "_" + new Date().toISOString().slice(0,10) + ".csv";
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
@@ -472,78 +516,174 @@ function statusStamp(status){
 function screenItem(itemId){
   const item = state.itens.find(i => i.id === itemId);
   state.itemAtual = item;
+  const emUso = Number(item.quantidade_cadastrada) - Number(item.quantidade_disponivel);
 
   const node = el(`
     <div class="app">
       <div class="panel">
         <a class="back" href="#" id="v">← voltar</a>
         <div class="h-title">${esc(item.nome)}</div>
-        <div class="h-sub">${esc(item.codigo_interno)} · ${esc(item.almoxarifado)}</div>
+        <div class="h-sub">${esc(item.codigo_interno)} · ${esc(nomeAlmox(item.almoxarifado))}</div>
       </div>
       <div class="content">
         <div class="tag">
           ${statusStamp(item.status_conformidade)}
           <div class="tag-code">${esc(item.codigo_interno)}</div>
           <div class="tag-name">${esc(item.nome)}</div>
-          <div class="tag-loc">${esc(item.almoxarifado)}</div>
+          <div class="tag-loc">${esc(nomeAlmox(item.almoxarifado))}</div>
           <div class="led-panel" style="margin-top:14px">
             <div><span class="led-read">${item.quantidade_disponivel}</span><span class="led-unit">${esc(item.unidade_estoque)}</span></div>
-            <div class="led-cap">disponível de<br><b>${item.quantidade_cadastrada} ${esc(item.unidade_estoque)}</b></div>
+            <div class="led-cap">no almoxarifado<br><b>${emUso} emprestado · total ${item.quantidade_cadastrada}</b></div>
           </div>
         </div>
+
+        <div class="section-label">empréstimo · volta para o almoxarifado</div>
         <div class="grid2">
           <button class="btn btn-primary" id="ret">Retirar</button>
           <button class="btn btn-outline" id="dev">Devolver</button>
         </div>
-        <div class="card"><h4>critério técnico</h4><p>${esc(item.criterio_tecnico||"—")}</p></div>
+
+        <div class="section-label">estoque · muda o total</div>
+        <div class="grid2">
+          <button class="btn btn-ok" id="ent">+ Entrada</button>
+          <button class="btn btn-falta" id="sai">− Saída definitiva</button>
+        </div>
+
+        <div class="section-label">últimas movimentações</div>
+        <div id="historico" class="panel-group"><div class="breaker"><div class="name" style="font-weight:400;color:#6B6A62">carregando...</div></div></div>
+
+        <div class="section-label">parecer de gestão · norma e guarda</div>
+        <div class="card"><h4>o que a norma pede</h4><p>${esc(item.referencia_normativa||"—")}</p></div>
+        <div class="card"><h4>como guardar${item.almox_grupos_armazenagem && !item.almox_grupos_armazenagem.validado_por_gestao ? ' <span style="color:#8A5A00">(rascunho, valide)</span>' : ''}</h4><p>${esc(item.almox_grupos_armazenagem ? item.almox_grupos_armazenagem.como_guardar : "—")}</p></div>
+        <div class="card"><h4>critério técnico completo</h4><p>${esc(item.criterio_tecnico||"—")}</p></div>
         <div class="card"><h4>evidência exigida</h4><p>${esc(item.evidencia_pertinente||"—")}</p></div>
         <button class="btn btn-ghost" id="nc">Abrir não conformidade</button>
-        <div id="msgArea"></div>
       </div>
     </div>`);
 
   node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); screenItens(item.categoria_id); };
   node.querySelector("#ret").onclick = () => modalQuantidade(item, "RETIRADA");
   node.querySelector("#dev").onclick = () => modalQuantidade(item, "DEVOLUCAO");
+  node.querySelector("#ent").onclick = () => modalQuantidade(item, "ENTRADA");
+  node.querySelector("#sai").onclick = () => modalQuantidade(item, "SAIDA");
   node.querySelector("#nc").onclick = () => modalNC(item, null);
   render(node);
+  carregarHistorico(item.id, node.querySelector("#historico"));
 }
 
+const TIPO_LABEL = {
+  RETIRADA: "retirou", DEVOLUCAO: "devolveu", ENTRADA: "entrada",
+  SAIDA: "saída definitiva", INSPECAO: "inspeção"
+};
+
+async function carregarHistorico(itemId, box){
+  try{
+    const regs = await api(`/almox_registros?item_id=eq.${itemId}&select=tipo,quantidade,resultado,observacoes,data_registro,efetivo(nome)&order=data_registro.desc&limit=5`);
+    if(!regs || regs.length === 0){
+      box.innerHTML = `<div class="breaker"><div class="name" style="font-weight:400;color:#6B6A62">nenhuma movimentação ainda</div></div>`;
+      return;
+    }
+    box.innerHTML = regs.map(r => {
+      const quem = r.efetivo ? r.efetivo.nome : "—";
+      const quando = new Date(r.data_registro).toLocaleString("pt-BR", {day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      const oque = r.tipo === "INSPECAO" ? `inspeção · ${esc(r.resultado||"")}` : `${TIPO_LABEL[r.tipo]||r.tipo} · ${r.quantidade}`;
+      const cor = r.tipo === "SAIDA" || r.resultado === "AVARIA" || r.resultado === "FALTA" ? "r" : "g";
+      return `
+        <div class="breaker">
+          <div class="led ${cor}"></div>
+          <div class="name" style="font-size:14.5px">${esc(quem)}
+            <div style="font-family:ui-monospace,monospace;font-size:11.5px;color:#6B6A62;font-weight:400">${oque}${r.observacoes ? " · " + esc(r.observacoes) : ""}</div>
+          </div>
+          <div class="count" style="font-size:11.5px">${quando}</div>
+        </div>`;
+    }).join("");
+  }catch(e){
+    box.innerHTML = `<div class="breaker"><div class="name" style="font-weight:400;color:#8E1A1F">não foi possível carregar o histórico</div></div>`;
+  }
+}
+
+const MOV = {
+  RETIRADA: { titulo: "Retirar (empréstimo)", ajuda: "O material sai, mas deve voltar. Fica registrado com seu nome.", obs: "Para quê? (opcional)", ph: "Ex.: treinamento, ocorrência, inspeção" },
+  DEVOLUCAO: { titulo: "Devolver", ajuda: "O material volta para o almoxarifado.", obs: "Observação (opcional)", ph: "Ex.: devolvido limpo e sem avaria" },
+  ENTRADA:  { titulo: "Entrada de material", ajuda: "Material novo chegou. Aumenta o total do estoque.", obs: "Origem / nota fiscal (opcional)", ph: "Ex.: NF 12345, compra, transferência" },
+  SAIDA:    { titulo: "Saída definitiva", ajuda: "O material não volta mais. Diminui o total do estoque.", obs: "Onde foi usado?", ph: "Ex.: placa instalada no prédio 3" }
+};
+
 function modalQuantidade(item, tipo){
-  const max = tipo === "RETIRADA" ? item.quantidade_disponivel : (item.quantidade_cadastrada - item.quantidade_disponivel);
-  const titulo = tipo === "RETIRADA" ? "Confirmar retirada" : "Confirmar devolução";
+  const cad = Number(item.quantidade_cadastrada), disp = Number(item.quantidade_disponivel);
+  const max = tipo === "RETIRADA" || tipo === "SAIDA" ? disp : tipo === "DEVOLUCAO" ? (cad - disp) : 9999;
+  const cfg = MOV[tipo];
+  const motivoSaida = tipo === "SAIDA" ? `
+        <div class="field"><label>motivo</label>
+          <select id="motivo">
+            <option value="">selecione...</option>
+            <option>Instalado em campo</option>
+            <option>Usado em ocorrência</option>
+            <option>Usado em treinamento</option>
+            <option>Avariado / descarte</option>
+            <option>Outro</option>
+          </select>
+        </div>` : "";
+
+  if(max < 1){
+    const msg = tipo === "DEVOLUCAO" ? "Não há nada emprestado deste item para devolver." : "Não há quantidade disponível no almoxarifado.";
+    const node = el(`<div class="app"><div class="panel"><a class="back" href="#" id="v">← voltar</a><div class="h-title">${cfg.titulo}</div><div class="h-sub">${esc(item.nome)}</div></div>
+      <div class="content"><div class="msg err">${msg}</div></div></div>`);
+    node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); screenItem(item.id); };
+    render(node); return;
+  }
+
   const node = el(`
     <div class="app">
-      <div class="panel"><a class="back" href="#" id="v">← voltar</a><div class="h-title">${titulo}</div><div class="h-sub">${esc(item.nome)}</div></div>
+      <div class="panel"><a class="back" href="#" id="v">← voltar</a><div class="h-title">${cfg.titulo}</div><div class="h-sub">${esc(item.nome)}</div></div>
       <div class="content">
-        <div class="status-line" style="color:#6B6A62">brigadista: ${esc(state.brigadista.nome)}</div>
-        <div class="field"><label>quantidade (máx. ${max})</label><input type="number" id="qtd" min="1" max="${max}" value="1"></div>
+        <div class="card"><p>${cfg.ajuda}</p></div>
+        <div class="status-line" style="color:#6B6A62">responsável: ${esc(state.brigadista.nome)}</div>
+        <div class="field"><label>quantidade${max < 9999 ? " (máx. " + max + ")" : ""} · ${esc(item.unidade_estoque)}</label>
+          <input type="number" id="qtd" min="1" ${max < 9999 ? 'max="'+max+'"' : ''} value="1" inputmode="numeric"></div>
+        ${motivoSaida}
+        <div class="field"><label>${cfg.obs}</label><input type="text" id="obs" placeholder="${cfg.ph}"></div>
         <div id="msgArea"></div>
-        <button class="btn btn-primary" id="ok">Confirmar</button>
+        <button class="btn ${tipo==='ENTRADA'?'btn-ok':tipo==='SAIDA'?'btn-falta':'btn-primary'}" id="ok">Confirmar</button>
       </div>
     </div>`);
   node.querySelector("#v").onclick = (ev) => { ev.preventDefault(); screenItem(item.id); };
-  node.querySelector("#ok").onclick = async () => {
+  node.querySelector("#ok").onclick = async (ev) => {
+    const btn = ev.currentTarget;
     const qtd = parseInt(node.querySelector("#qtd").value, 10);
     const msgArea = node.querySelector("#msgArea");
+    let obs = node.querySelector("#obs").value.trim();
     if(!qtd || qtd < 1 || qtd > max){ msgArea.innerHTML = `<div class="msg err">quantidade inválida</div>`; return; }
+    if(tipo === "SAIDA"){
+      const motivo = node.querySelector("#motivo").value;
+      if(!motivo){ msgArea.innerHTML = `<div class="msg err">selecione o motivo da saída</div>`; return; }
+      if(!obs){ msgArea.innerHTML = `<div class="msg err">informe onde o material foi usado</div>`; return; }
+      obs = motivo + " — " + obs;
+    }
+    btn.disabled = true;
     try{
-      await registrarMovimento(item, tipo, qtd);
+      await registrarMovimento(item, tipo, qtd, obs || null);
       msgArea.innerHTML = `<div class="msg ok">registrado com sucesso</div>`;
       await carregarDados();
-      const atualizado = state.itens.find(i => i.id === item.id);
-      setTimeout(() => screenItem(atualizado.id), 550);
-    }catch(e){ msgArea.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+      setTimeout(() => screenItem(item.id), 550);
+    }catch(e){ btn.disabled = false; msgArea.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
   };
   render(node);
 }
 
-async function registrarMovimento(item, tipo, qtd){
-  const novoDisponivel = tipo === "RETIRADA" ? item.quantidade_disponivel - qtd
-    : Math.min(item.quantidade_cadastrada, item.quantidade_disponivel + qtd);
-  await api(`/almox_itens?id=eq.${item.id}`, { method:"PATCH", headers:{"Prefer":"return=minimal"}, body:{ quantidade_disponivel: novoDisponivel } });
+async function registrarMovimento(item, tipo, qtd, obs){
+  // lê a quantidade atual do banco para não sobrescrever movimentação de outra pessoa
+  const atual = await api(`/almox_itens?id=eq.${item.id}&select=quantidade_cadastrada,quantidade_disponivel`);
+  let cad = Number(atual[0].quantidade_cadastrada), disp = Number(atual[0].quantidade_disponivel);
+  if(tipo === "RETIRADA"){ if(qtd > disp) throw new Error("quantidade maior que a disponível agora (" + disp + ")"); disp -= qtd; }
+  if(tipo === "DEVOLUCAO"){ disp = Math.min(cad, disp + qtd); }
+  if(tipo === "ENTRADA"){ cad += qtd; disp += qtd; }
+  if(tipo === "SAIDA"){ if(qtd > disp) throw new Error("quantidade maior que a disponível agora (" + disp + ")"); cad -= qtd; disp -= qtd; }
+
+  await api(`/almox_itens?id=eq.${item.id}`, { method:"PATCH", headers:{"Prefer":"return=minimal"},
+    body:{ quantidade_cadastrada: cad, quantidade_disponivel: disp, updated_at: new Date().toISOString() } });
   await api(`/almox_registros`, { method:"POST", headers:{"Prefer":"return=minimal"},
-    body:{ item_id:item.id, tipo:tipo, quantidade:qtd, brigadista_id: state.brigadista.id } });
+    body:{ item_id: item.id, tipo: tipo, quantidade: qtd, brigadista_id: state.brigadista.id, observacoes: obs } });
 }
 
 function modalNC(item, checklistCtx){
