@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Não conformidades · Almoxarifado SGO-ETP</title>
+<style>
+:root{
+  --floor:#D9D8CE; --panel:#15181B; --steel:#6B6A62; --steel-light:#9A988C; --ink:#1C1A15;
+  --tag:#ECE4C6; --tag-edge:#C9BE8E; --row:#F1F0E9;
+  --red:#C1272D; --red-dark:#8E1A1F; --amber:#E29400; --amber-dark:#8A5A00; --green:#2E6B3A; --green-dark:#1F4A27; --led:#3DFB74;
+  --font-cond: system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+  --font-mono: ui-monospace,"SF Mono",Menlo,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--floor)}
+body{color:var(--ink);font-family:var(--font-cond);padding-top:env(safe-area-inset-top,0);padding-bottom:env(safe-area-inset-bottom,0)}
+button{font:inherit;color:inherit}
+.app{max-width:760px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.panel{position:relative;background:var(--panel);color:#EDEAE0;padding:22px 20px 20px}
+.panel::before,.panel::after{content:"";position:absolute;top:10px;width:5px;height:5px;border-radius:50%;background:#3A3F44}
+.panel::before{left:10px}.panel::after{right:10px}
+.status-line{font-family:var(--font-mono);font-size:12.5px;color:var(--led);margin-bottom:6px}
+.h-title{font-weight:800;letter-spacing:-.02em;font-size:28px;line-height:1.05}
+.h-sub{font-family:var(--font-mono);font-size:12.5px;color:var(--steel-light);margin-top:5px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:16px}
+.kpi{background:#1F2328;border-radius:10px;padding:10px 10px 9px}
+.kpi b{display:block;font-family:var(--font-mono);font-size:24px;line-height:1.1}
+.kpi span{font-family:var(--font-mono);font-size:10.5px;color:var(--steel-light);text-transform:uppercase}
+.content{padding:16px;display:flex;flex-direction:column;gap:12px;flex:1}
+.filters{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid #B9B6A8;background:var(--row);border-radius:999px;padding:8px 14px;font-size:14px;font-weight:600;cursor:pointer}
+.chip.on{background:var(--panel);border-color:var(--panel);color:#EDEAE0}
+.sep{width:1px;background:#B9B6A8;margin:0 2px}
+.nc{position:relative;background:var(--tag);border:1px solid var(--tag-edge);border-radius:4px;padding:18px 16px 14px}
+.stamp{position:absolute;top:12px;right:12px;transform:rotate(-7deg);border:2px solid;border-radius:8px;padding:3px 9px;font-weight:800;font-size:12px;letter-spacing:.03em;background:rgba(255,255,255,.4)}
+.stamp.aberta{border-color:var(--red);color:var(--red-dark)}
+.stamp.encerrada{border-color:var(--green);color:var(--green-dark)}
+.code{font-family:var(--font-mono);font-size:12px;color:#6B6248}
+.nome{font-weight:800;font-size:20px;line-height:1.1;margin:3px 90px 4px 0}
+.meta{font-size:13px;color:#6B6248}
+.prio{display:inline-block;font-family:var(--font-mono);font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px;margin-top:8px}
+.prio.ALTA{background:#F6DAD7;color:var(--red-dark)} .prio.MEDIA{background:#FBEFD6;color:var(--amber-dark)} .prio.BAIXA{background:#E9E5DD;color:#3D3934}
+.bloco{margin-top:10px}
+.bloco h4{margin:0 0 3px;font-size:11.5px;font-weight:700;color:#6B6248;text-transform:uppercase;letter-spacing:.03em}
+.bloco p{margin:0;font-size:14.5px;line-height:1.4}
+.trilha{margin-top:12px;padding-top:10px;border-top:1px dashed var(--tag-edge);font-family:var(--font-mono);font-size:11.5px;color:#6B6248;line-height:1.6}
+.vazio,.msg{background:var(--row);border-radius:10px;padding:16px;font-size:14.5px}
+.msg.err{background:#F6DAD7;color:var(--red-dark);font-family:var(--font-mono);font-size:13px}
+.btn{display:flex;align-items:center;justify-content:center;border:none;border-radius:10px;padding:15px;font-weight:700;font-size:15px;cursor:pointer;background:var(--panel);color:#EDEAE0;border-bottom:3px solid #000}
+.btn:active{transform:translateY(2px);border-bottom-width:1px}
+.acoes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.foot{font-family:var(--font-mono);font-size:11.5px;color:var(--steel);text-align:center;padding:10px 16px 18px}
+.spinner{width:26px;height:26px;border-radius:50%;border:3px solid #B9B6A8;border-top-color:var(--red);animation:spin .9s linear infinite;margin:40px auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-width:480px){.kpis{grid-template-columns:repeat(2,1fr)}}
+@media print{
+  body,html{background:#fff}
+  .filters,.acoes,.spinner{display:none!important}
+  .panel{background:#fff;color:#000;border-bottom:2px solid #000}
+  .panel::before,.panel::after{display:none}
+  .status-line,.h-sub,.kpi span{color:#333}
+  .kpi{background:#fff;border:1px solid #999}
+  .nc{break-inside:avoid;background:#fff}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <div class="status-line" id="atualizado">carregando...</div>
+    <div class="h-title">Não conformidades</div>
+    <div class="h-sub">ALMOXARIFADO SGO-ETP · ISO 9001 + 14001</div>
+    <div class="kpis">
+      <div class="kpi"><b id="kAbertas">–</b><span>abertas</span></div>
+      <div class="kpi"><b id="kAlta" style="color:#FF8A8A">–</b><span>alta (abertas)</span></div>
+      <div class="kpi"><b id="kEnc" style="color:#9BE3AE">–</b><span>encerradas</span></div>
+      <div class="kpi"><b id="kTotal">–</b><span>total</span></div>
+    </div>
+  </div>
+  <div class="content">
+    <div class="filters" id="filtros">
+      <button class="chip on" data-f="almox" data-v="">Todos</button>
+      <button class="chip" data-f="almox" data-v="Almox I">Almox I</button>
+      <button class="chip" data-f="almox" data-v="Almox II">Almox II</button>
+      <span class="sep"></span>
+      <button class="chip on" data-f="status" data-v="">Todas</button>
+      <button class="chip" data-f="status" data-v="ABERTA">Abertas</button>
+      <button class="chip" data-f="status" data-v="ENCERRADA">Encerradas</button>
+    </div>
+    <div id="lista"><div class="spinner"></div></div>
+    <div class="acoes">
+      <button class="btn" id="recarregar">Atualizar</button>
+      <button class="btn" id="csv">Exportar CSV</button>
+    </div>
+  </div>
+  <div class="foot">dados ao vivo do SGO-ETP · registros com responsável, data e hora</div>
+</div>
+
+<script>
+const REST = "https://wcyftjpsbifyvuqzxmbs.supabase.co/rest/v1";
+const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjeWZ0anBzYmlmeXZ1cXp4bWJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwODUyNzksImV4cCI6MjA5NTY2MTI3OX0.Dcwuq7_Y85PIrbciAj-8-YRbfmMg9QxBkR9esljqMbM";
+const SELECT = "id,codigo,origem,status,prioridade,constatacao,correcao_contencao,acao_corretiva,requisito_referencia,created_at,execucao_concluida_em,resultado_eficacia," +
+  "almox_itens(codigo_interno,nome,kit,almoxarifado,almox_categorias(nome))," +
+  "aberta:efetivo!almox_acoes_nc_responsavel_id_fkey(nome)," +
+  "encerrada:efetivo!almox_acoes_nc_verificador_id_fkey(nome)";
+
+let todas = [];
+const filtro = { almox: "", status: "" };
+const $ = id => document.getElementById(id);
+const esc = s => (s==null?"":String(s)).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dt = d => d ? new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+const dia = d => d ? new Date(d + (String(d).length === 10 ? "T12:00:00" : "")).toLocaleDateString("pt-BR") : "";
+const statusGrupo = s => s === "ENCERRADA" ? "ENCERRADA" : "ABERTA";   // ABERTA e EM_TRATAMENTO contam como abertas
+
+async function carregar(){
+  $("lista").innerHTML = '<div class="spinner"></div>';
+  try{
+    const r = await fetch(`${REST}/almox_acoes_nc?select=${encodeURIComponent(SELECT)}&order=created_at.desc`,
+      { headers: { apikey: KEY, Authorization: "Bearer " + KEY } });
+    if(!r.ok) throw new Error("erro " + r.status + ": " + (await r.text()).slice(0,160));
+    todas = await r.json();
+    $("atualizado").textContent = "atualizado em " + dt(new Date());
+    render();
+  }catch(e){
+    $("lista").innerHTML = `<div class="msg err">não foi possível carregar: ${esc(e.message)}</div>`;
+    $("atualizado").textContent = "falha ao carregar";
+  }
+}
+
+function visiveis(){
+  return todas.filter(n => {
+    const it = n.almox_itens || {};
+    if(filtro.almox && it.almoxarifado !== filtro.almox) return false;
+    if(filtro.status && statusGrupo(n.status) !== filtro.status) return false;
+    return true;
+  });
+}
+
+function render(){
+  const base = todas.filter(n => !filtro.almox || (n.almox_itens||{}).almoxarifado === filtro.almox);
+  const abertas = base.filter(n => statusGrupo(n.status) === "ABERTA");
+  $("kAbertas").textContent = abertas.length;
+  $("kAlta").textContent = abertas.filter(n => n.prioridade === "ALTA").length;
+  $("kEnc").textContent = base.length - abertas.length;
+  $("kTotal").textContent = base.length;
+
+  const lista = visiveis();
+  if(!lista.length){ $("lista").innerHTML = `<div class="vazio">nenhuma não conformidade neste filtro</div>`; return; }
+  $("lista").innerHTML = lista.map(n => {
+    const it = n.almox_itens || {};
+    const st = statusGrupo(n.status);
+    const cat = it.almox_categorias ? it.almox_categorias.nome : "";
+    return `
+    <div class="nc">
+      <div class="stamp ${st.toLowerCase()}">${st === "ABERTA" ? "aberta" : "encerrada"}</div>
+      <div class="code">${esc(it.codigo_interno||"")} · ${esc(it.almoxarifado||"")}${n.origem ? " · origem: " + esc(n.origem.toLowerCase()) : ""}</div>
+      <div class="nome">${esc(it.nome||"item removido")}</div>
+      <div class="meta">${esc(cat)}${it.kit ? " · <b>" + esc(it.kit) + "</b>" : ""}</div>
+      ${n.prioridade ? `<span class="prio ${esc(n.prioridade)}">gravidade ${esc(n.prioridade.toLowerCase())}</span>` : ""}
+      <div class="bloco"><h4>o que foi encontrado</h4><p>${esc(n.constatacao)}</p></div>
+      ${n.correcao_contencao ? `<div class="bloco"><h4>ação imediata</h4><p>${esc(n.correcao_contencao)}</p></div>` : ""}
+      ${n.acao_corretiva ? `<div class="bloco"><h4>correção realizada</h4><p>${esc(n.acao_corretiva)}</p></div>` : ""}
+      ${n.requisito_referencia ? `<div class="bloco"><h4>requisito de referência</h4><p>${esc(n.requisito_referencia)}</p></div>` : ""}
+      <div class="trilha">
+        aberta por ${esc(n.aberta ? n.aberta.nome : "—")} em ${dt(n.created_at)}<br>
+        ${st === "ENCERRADA"
+          ? `encerrada por ${esc(n.encerrada ? n.encerrada.nome : "—")} em ${dia(n.execucao_concluida_em)}${n.resultado_eficacia ? " · " + esc(n.resultado_eficacia) : ""}`
+          : `situação: aguardando correção`}
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function exportar(){
+  const linhas = [["status","almoxarifado","codigo","item","categoria","bolsa/kit","gravidade","origem","o que foi encontrado","acao imediata","correcao realizada","aberta por","aberta em","encerrada por","encerrada em"]];
+  visiveis().forEach(n => {
+    const it = n.almox_itens || {};
+    linhas.push([statusGrupo(n.status), it.almoxarifado, it.codigo_interno, it.nome, it.almox_categorias ? it.almox_categorias.nome : "",
+      it.kit, n.prioridade, n.origem, n.constatacao, n.correcao_contencao, n.acao_corretiva,
+      n.aberta ? n.aberta.nome : "", dt(n.created_at), n.encerrada ? n.encerrada.nome : "", dia(n.execucao_concluida_em)]);
+  });
+  const csv = linhas.map(l => l.map(c => `"${String(c==null?"":c).replace(/\n/g," ").replace(/"/g,'""')}"`).join(";")).join("\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8"}));
+  const a = document.createElement("a");
+  a.href = url; a.download = "nao_conformidades_" + new Date().toISOString().slice(0,10) + ".csv";
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+$("filtros").addEventListener("click", e => {
+  const b = e.target.closest(".chip"); if(!b) return;
+  filtro[b.dataset.f] = b.dataset.v;
+  document.querySelectorAll(`.chip[data-f="${b.dataset.f}"]`).forEach(x => x.classList.toggle("on", x === b));
+  render();
+});
+$("recarregar").onclick = carregar;
+$("csv").onclick = exportar;
+carregar();
+</script>
+</body>
+</html>
