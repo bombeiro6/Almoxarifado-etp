@@ -50,13 +50,27 @@ button{font:inherit;color:inherit}
 .btn{display:flex;align-items:center;justify-content:center;border:none;border-radius:10px;padding:15px;font-weight:700;font-size:15px;cursor:pointer;background:var(--panel);color:#EDEAE0;border-bottom:3px solid #000}
 .btn:active{transform:translateY(2px);border-bottom-width:1px}
 .acoes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.admin{background:var(--row);border:1.5px dashed #B9B6A8;border-radius:10px;padding:14px;margin-top:6px}
+.admin h3{margin:0 0 4px;font-size:15px}
+.admin p{margin:0 0 10px;font-size:13.5px;color:var(--steel)}
+.admin .linha{display:flex;gap:8px}
+.admin input,.ov select,.ov input,.ov textarea{border:1.5px solid #C7C4B4;border-radius:8px;padding:11px 12px;background:#fff;font:inherit;font-size:15.5px;width:100%}
+.btn-sm{border:none;border-radius:8px;padding:11px 14px;font-weight:700;cursor:pointer;background:var(--panel);color:#EDEAE0;white-space:nowrap}
+.btn-del{margin-top:12px;width:100%;border:2px solid var(--red);background:#fff;color:var(--red-dark);border-radius:8px;padding:11px;font-weight:700;cursor:pointer}
+.ok-admin{font-family:var(--font-mono);font-size:12.5px;color:var(--green-dark)}
+.ov{position:fixed;inset:0;background:rgba(21,24,27,.6);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.ov-box{background:var(--floor);width:100%;max-width:560px;border-radius:14px 14px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0));display:flex;flex-direction:column;gap:10px;max-height:92vh;overflow:auto}
+.ov-box h3{margin:0;font-size:20px}
+.ov-box label{font-size:13px;font-weight:700;color:var(--steel)}
+.btn-red{border:none;border-radius:10px;padding:15px;font-weight:700;font-size:15px;cursor:pointer;background:var(--red);color:#fff;border-bottom:3px solid var(--red-dark)}
+.btn-lite{border:none;border-radius:10px;padding:13px;font-weight:700;cursor:pointer;background:var(--row)}
 .foot{font-family:var(--font-mono);font-size:11.5px;color:var(--steel);text-align:center;padding:10px 16px 18px}
 .spinner{width:26px;height:26px;border-radius:50%;border:3px solid #B9B6A8;border-top-color:var(--red);animation:spin .9s linear infinite;margin:40px auto}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (max-width:480px){.kpis{grid-template-columns:repeat(2,1fr)}}
 @media print{
   body,html{background:#fff}
-  .filters,.acoes,.spinner{display:none!important}
+  .filters,.acoes,.spinner,.admin,.btn-del,.ov{display:none!important}
   .panel{background:#fff;color:#000;border-bottom:2px solid #000}
   .panel::before,.panel::after{display:none}
   .status-line,.h-sub,.kpi span{color:#333}
@@ -93,6 +107,7 @@ button{font:inherit;color:inherit}
       <button class="btn" id="recarregar">Atualizar</button>
       <button class="btn" id="csv">Exportar CSV</button>
     </div>
+    <div class="admin" id="admin"></div>
   </div>
   <div class="foot">dados ao vivo do SGO-ETP · registros com responsável, data e hora</div>
 </div>
@@ -106,6 +121,7 @@ const SELECT = "id,codigo,origem,status,prioridade,constatacao,correcao_contenca
   "encerrada:efetivo!almox_acoes_nc_verificador_id_fkey(nome)";
 
 let todas = [];
+const adm = { pin: null, efetivo: [], anuladas: 0 };
 const filtro = { almox: "", status: "" };
 const $ = id => document.getElementById(id);
 const esc = s => (s==null?"":String(s)).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -116,12 +132,13 @@ const statusGrupo = s => s === "ENCERRADA" ? "ENCERRADA" : "ABERTA";   // ABERTA
 async function carregar(){
   $("lista").innerHTML = '<div class="spinner"></div>';
   try{
-    const r = await fetch(`${REST}/almox_acoes_nc?select=${encodeURIComponent(SELECT)}&order=created_at.desc`,
+    const r = await fetch(`${REST}/almox_acoes_nc?select=${encodeURIComponent(SELECT)}&status=neq.ANULADA&order=created_at.desc`,
       { headers: { apikey: KEY, Authorization: "Bearer " + KEY } });
     if(!r.ok) throw new Error("erro " + r.status + ": " + (await r.text()).slice(0,160));
     todas = await r.json();
     $("atualizado").textContent = "atualizado em " + dt(new Date());
     render();
+    renderAdmin();
   }catch(e){
     $("lista").innerHTML = `<div class="msg err">não foi possível carregar: ${esc(e.message)}</div>`;
     $("atualizado").textContent = "falha ao carregar";
@@ -168,6 +185,7 @@ function render(){
           ? `encerrada por ${esc(n.encerrada ? n.encerrada.nome : "—")} em ${dia(n.execucao_concluida_em)}${n.resultado_eficacia ? " · " + esc(n.resultado_eficacia) : ""}`
           : `situação: aguardando correção`}
       </div>
+      ${adm.pin ? `<button class="btn-del" data-del="${n.id}">Excluir (lançada por engano)</button>` : ""}
     </div>`;
   }).join("");
 }
@@ -192,6 +210,115 @@ $("filtros").addEventListener("click", e => {
   filtro[b.dataset.f] = b.dataset.v;
   document.querySelectorAll(`.chip[data-f="${b.dataset.f}"]`).forEach(x => x.classList.toggle("on", x === b));
   render();
+});
+async function rpc(nome, corpo){
+  const r = await fetch(`${REST}/rpc/${nome}`, { method:"POST",
+    headers:{ apikey: KEY, Authorization: "Bearer " + KEY, "Content-Type":"application/json" }, body: JSON.stringify(corpo) });
+  const t = await r.text();
+  let j = null; try{ j = JSON.parse(t); }catch(e){}
+  if(!r.ok) throw new Error((j && j.message) || ("erro " + r.status));
+  return j;
+}
+async function apiGet(path){
+  const r = await fetch(`${REST}${path}`, { headers:{ apikey: KEY, Authorization: "Bearer " + KEY } });
+  if(!r.ok) throw new Error("erro " + r.status);
+  return r.json();
+}
+
+function renderAdmin(){
+  const box = $("admin");
+  if(!adm.pin){
+    box.innerHTML = `
+      <h3>Área da supervisão · excluir lançamento errado</h3>
+      <p>Para excluir uma não conformidade registrada por engano, digite a senha da supervisão.</p>
+      <div class="linha">
+        <input type="password" id="pin" inputmode="numeric" autocomplete="off" placeholder="senha">
+        <button class="btn-sm" id="desbloquear">Desbloquear</button>
+      </div>
+      <div id="pinMsg"></div>`;
+    $("desbloquear").onclick = desbloquear;
+    $("pin").onkeydown = e => { if(e.key === "Enter") desbloquear(); };
+  }else{
+    box.innerHTML = `
+      <h3>Área da supervisão · desbloqueada</h3>
+      <p>Cada ficha mostra o botão <b>Excluir</b>. A NC some da lista, mas fica registrado no sistema quem excluiu, quando e o motivo.${adm.anuladas ? ` Já excluídas: <b>${adm.anuladas}</b>.` : ""}</p>
+      <button class="btn-sm" id="bloquear">Bloquear de novo</button>`;
+    $("bloquear").onclick = () => { adm.pin = null; render(); renderAdmin(); };
+  }
+}
+
+async function desbloquear(){
+  const pin = $("pin").value.trim();
+  const msg = $("pinMsg");
+  if(!pin) return;
+  $("desbloquear").disabled = true; msg.innerHTML = `<p class="ok-admin">verificando...</p>`;
+  try{
+    const ok = await rpc("almox_verificar_pin", { p_pin: pin });
+    if(!ok){ msg.innerHTML = `<p style="color:var(--red-dark);margin:8px 0 0">senha incorreta</p>`; $("desbloquear").disabled = false; return; }
+    adm.pin = pin;
+    const [ef, an] = await Promise.all([
+      apiGet("/efetivo?status=eq.ativo&select=id,nome&order=nome"),
+      apiGet("/almox_acoes_nc?status=eq.ANULADA&select=id")
+    ]);
+    adm.efetivo = ef; adm.anuladas = an.length;
+    render(); renderAdmin();
+  }catch(e){ msg.innerHTML = `<p style="color:var(--red-dark);margin:8px 0 0">${esc(e.message)}</p>`; $("desbloquear").disabled = false; }
+}
+
+function abrirExclusao(id){
+  const n = todas.find(x => x.id === id); if(!n) return;
+  const it = n.almox_itens || {};
+  const ov = document.createElement("div");
+  ov.className = "ov";
+  ov.innerHTML = `
+    <div class="ov-box">
+      <h3>Excluir não conformidade</h3>
+      <div class="nc" style="padding:12px 14px">
+        <div class="code">${esc(it.codigo_interno||"")} · ${esc(it.almoxarifado||"")}</div>
+        <div class="nome" style="margin-right:0;font-size:17px">${esc(it.nome||"")}</div>
+        <p style="margin:4px 0 0;font-size:14px">${esc(n.constatacao)}</p>
+        <div class="code" style="margin-top:6px">aberta por ${esc(n.aberta ? n.aberta.nome : "—")} em ${dt(n.created_at)}</div>
+      </div>
+      <label>quem está excluindo</label>
+      <select id="exPor"><option value="">selecione...</option>${adm.efetivo.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join("")}</select>
+      <label>motivo</label>
+      <select id="exMotivo">
+        <option value="">selecione...</option>
+        <option>Lançada em duplicidade</option>
+        <option>Item errado</option>
+        <option>Erro de digitação / descrição errada</option>
+        <option>Não era não conformidade</option>
+        <option>Outro</option>
+      </select>
+      <input type="text" id="exDet" placeholder="detalhe (obrigatório se escolher Outro)">
+      <div id="exMsg"></div>
+      <button class="btn-red" id="exOk">Excluir</button>
+      <button class="btn-lite" id="exCancel">Cancelar</button>
+    </div>`;
+  document.body.appendChild(ov);
+  const fechar = () => ov.remove();
+  ov.addEventListener("click", e => { if(e.target === ov) fechar(); });
+  ov.querySelector("#exCancel").onclick = fechar;
+  ov.querySelector("#exOk").onclick = async (e) => {
+    const btn = e.currentTarget, msg = ov.querySelector("#exMsg");
+    const por = ov.querySelector("#exPor").value;
+    const mot = ov.querySelector("#exMotivo").value;
+    const det = ov.querySelector("#exDet").value.trim();
+    if(!por){ msg.innerHTML = `<div class="msg err">selecione quem está excluindo</div>`; return; }
+    if(!mot){ msg.innerHTML = `<div class="msg err">selecione o motivo</div>`; return; }
+    if(mot === "Outro" && !det){ msg.innerHTML = `<div class="msg err">descreva o motivo</div>`; return; }
+    btn.disabled = true; btn.textContent = "excluindo...";
+    try{
+      await rpc("almox_anular_nc", { p_nc: n.id, p_pin: adm.pin, p_por: por, p_motivo: det ? `${mot} — ${det}` : mot });
+      adm.anuladas++;
+      fechar();
+      await carregar();
+    }catch(err){ btn.disabled = false; btn.textContent = "Excluir"; msg.innerHTML = `<div class="msg err">${esc(err.message)}</div>`; }
+  };
+}
+
+$("lista").addEventListener("click", e => {
+  const b = e.target.closest("[data-del]"); if(b) abrirExclusao(b.dataset.del);
 });
 $("recarregar").onclick = carregar;
 $("csv").onclick = exportar;
