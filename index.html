@@ -74,6 +74,11 @@ button,input,textarea,select{font:inherit;color:inherit}
 .breaker .name{flex:1;font-weight:600;font-size:15.5px}
 .breaker .count{font-family:var(--font-mono);font-size:13px;color:var(--steel)}
 .panel-group{background:var(--row);border-radius:10px;overflow:hidden}
+.kit-head{display:flex;align-items:center;gap:10px;background:var(--panel);color:#EDEAE0;border-radius:10px 10px 0 0;
+  padding:11px 14px;font-family:var(--font-cond);font-weight:800;font-size:14px;letter-spacing:.02em;margin-top:8px}
+.kit-count{font-family:var(--font-mono);font-size:11.5px;font-weight:400;color:var(--steel-light)}
+.kit-body{border-radius:0 0 10px 10px}
+.kit-body .breaker:first-child{border-radius:0}
 
 /* ---------- botões ---------- */
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:10px;
@@ -234,14 +239,22 @@ function gaugeSvg(pct, size){
 async function carregarDados(){
   const [categorias, itens] = await Promise.all([
     api("/almox_categorias?select=id,nome,ordem&order=ordem"),
-    api("/almox_itens?ativo=eq.true&select=id,codigo_interno,nome,categoria_id,almoxarifado,unidade_estoque,quantidade_cadastrada,quantidade_disponivel,criterio_tecnico,evidencia_pertinente,status_conformidade,referencia_normativa,almox_grupos_armazenagem(nome,como_guardar,validado_por_gestao)&order=nome")
+    api("/almox_itens?ativo=eq.true&select=id,codigo_interno,nome,categoria_id,almoxarifado,unidade_estoque,quantidade_cadastrada,quantidade_disponivel,criterio_tecnico,evidencia_pertinente,status_conformidade,referencia_normativa,kit,almox_grupos_armazenagem(nome,como_guardar,validado_por_gestao)&order=nome")
   ]);
   state.categorias = categorias;
   state.itens = itens;
 }
 function itensAlmox(almox){ const a = almox || state.almox; return a ? state.itens.filter(i => i.almoxarifado === a) : state.itens; }
 function nomeAlmox(a){ return a === "Almox II" ? "Almoxarifado II" : "Almoxarifado I"; }
-function itensDaCategoria(id){ return itensAlmox().filter(i => i.categoria_id === id); }
+function itensDaCategoria(id){ return ordenarPorKit(itensAlmox().filter(i => i.categoria_id === id)); }
+function ordenarPorKit(lista){
+  const comKit = lista.filter(i => i.kit).sort((a,b) => a.codigo_interno.localeCompare(b.codigo_interno, "pt", {numeric:true}));
+  const ordemKit = [];
+  comKit.forEach(i => { if(!ordemKit.includes(i.kit)) ordemKit.push(i.kit); });
+  comKit.sort((a,b) => ordemKit.indexOf(a.kit) - ordemKit.indexOf(b.kit) || a.codigo_interno.localeCompare(b.codigo_interno, "pt", {numeric:true}));
+  const avulsos = lista.filter(i => !i.kit);
+  return comKit.concat(avulsos);
+}
 function pctConforme(almox){
   const lista = itensAlmox(almox);
   if(lista.length === 0) return 100;
@@ -474,16 +487,38 @@ function screenItens(categoriaId){
   const cat = state.categorias.find(c => c.id === categoriaId);
   const itens = itensDaCategoria(categoriaId);
 
-  let rows = "";
-  itens.forEach(i => {
+  const linha = i => {
     const nc = i.status_conformidade === "NAO_CONFORME";
-    rows += `
+    return `
       <a class="breaker" href="#" data-item="${i.id}">
         <div class="led ${nc?'r':'g'}"></div>
-        <div class="name">${esc(i.nome)}<div style="font-family:ui-monospace,monospace;font-size:11.5px;color:#6B6A62;font-weight:400">${esc(i.codigo_interno)} · ${esc(i.almoxarifado)}</div></div>
+        <div class="name">${esc(i.nome)}<div style="font-family:ui-monospace,monospace;font-size:11.5px;color:#6B6A62;font-weight:400">${esc(i.codigo_interno)}</div></div>
         <div class="count">${i.quantidade_disponivel} ${esc(i.unidade_estoque)}</div>
       </a>`;
-  });
+  };
+  let rows = "";
+  const temKit = itens.some(i => i.kit);
+  if(!temKit){
+    rows = `<div class="panel-group">${itens.map(linha).join("")}</div>`;
+  }else{
+    const grupos = [];
+    itens.forEach(i => {
+      const g = i.kit || "ITENS AVULSOS";
+      let grp = grupos.find(x => x.nome === g);
+      if(!grp){ grp = { nome: g, itens: [] }; grupos.push(grp); }
+      grp.itens.push(i);
+    });
+    rows = grupos.map(g => {
+      const nc = g.itens.some(i => i.status_conformidade === "NAO_CONFORME");
+      return `
+      <div class="kit-head">
+        <div class="led ${nc?'r':'g'}"></div>
+        <div style="flex:1">${esc(g.nome)}</div>
+        <div class="kit-count">${g.itens.length} ${g.itens.length===1?'item':'itens'}</div>
+      </div>
+      <div class="panel-group kit-body">${g.itens.map(linha).join("")}</div>`;
+    }).join("");
+  }
 
   const node = el(`
     <div class="app">
@@ -497,7 +532,7 @@ function screenItens(categoriaId){
           <span>checklist completo · ${itens.length} itens</span><span>→</span>
         </button>
         <div class="section-label">ou selecione um item</div>
-        <div class="panel-group">${rows}</div>
+        ${rows}
       </div>
     </div>`);
 
@@ -523,14 +558,14 @@ function screenItem(itemId){
       <div class="panel">
         <a class="back" href="#" id="v">← voltar</a>
         <div class="h-title">${esc(item.nome)}</div>
-        <div class="h-sub">${esc(item.codigo_interno)} · ${esc(nomeAlmox(item.almoxarifado))}</div>
+        <div class="h-sub">${esc(item.codigo_interno)} · ${esc(nomeAlmox(item.almoxarifado))}${item.kit ? ' · ' + esc(item.kit) : ''}</div>
       </div>
       <div class="content">
         <div class="tag">
           ${statusStamp(item.status_conformidade)}
           <div class="tag-code">${esc(item.codigo_interno)}</div>
           <div class="tag-name">${esc(item.nome)}</div>
-          <div class="tag-loc">${esc(nomeAlmox(item.almoxarifado))}</div>
+          <div class="tag-loc">${item.kit ? '<b>' + esc(item.kit) + '</b> · ' : ''}${esc(nomeAlmox(item.almoxarifado))}</div>
           <div class="led-panel" style="margin-top:14px">
             <div><span class="led-read">${item.quantidade_disponivel}</span><span class="led-unit">${esc(item.unidade_estoque)}</span></div>
             <div class="led-cap">no almoxarifado<br><b>${emUso} emprestado · total ${item.quantidade_cadastrada}</b></div>
@@ -750,7 +785,7 @@ function renderChecklistStep(){
         <div class="tag">
           <div class="tag-code">${esc(item.codigo_interno)}</div>
           <div class="tag-name">${esc(item.nome)}</div>
-          <div class="tag-loc">disponível: ${item.quantidade_disponivel} ${esc(item.unidade_estoque)}</div>
+          <div class="tag-loc">${item.kit ? '<b>' + esc(item.kit) + '</b> · ' : ''}disponível: ${item.quantidade_disponivel} ${esc(item.unidade_estoque)}</div>
         </div>
         <div class="card"><p>${esc(item.criterio_tecnico||"—")}</p></div>
         <div class="grid3">
